@@ -45,7 +45,7 @@ Wayfarer читает вслух задания и рассказывает ис
 
 ## Нашли ошибку?
 
-Нажмите «!» в плеере (или введите `/wf report` сразу после реплики) и выберите тип проблемы: ударение, голос, обрезка, подача, текст. Затем `/wf reports` → Ctrl+C и отправьте текст автору (Discord или [Issues](https://github.com/AndrewichLV/wayfarer-wow-forever/issues)).
+Нажмите «!» в плеере (или введите `/wf report` сразу после реплики) и выберите тип проблемы: ударение, голос, обрезка, подача, текст. Затем `/wf reports` → Ctrl+C и отправьте текст автору (в личку Discord или [Issues](https://github.com/AndrewichLV/wayfarer-wow-forever/issues)).
 
 ## Окно появляется, но звука нет
 
