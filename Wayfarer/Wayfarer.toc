@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: |cffd4af37Wayfarer|r
 ## Notes: Путеводитель по Азероту: русская озвучка квестов голосами NPC и лор мест для WoW Forever. Озвучка — модуль Wayfarer_Voices.
-## Version: 0.4.0
+## Version: 0.4.1
 ## Category: Audio & Video
 ## IconTexture: Interface\Icons\Ability_Warrior_BattleShout
 ## SavedVariables: Wayfarer_DB, Wayfarer_Collected

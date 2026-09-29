@@ -6,7 +6,8 @@ local Util = ns.Util
 --  * реплика NPC (gossip) не встаёт в очередь к квестам и прерывается квестом;
 --  * новая реплика заменяет старую;
 --  * лор места (zone) — самый низкий приоритет: встаёт в конец, из ещё не начатых мест
---    остаётся только последнее; прерванный квестом лор дочитывается после квестов.
+--    остаётся только последнее (лор зоны вытесняет только лор другой зоны, а зона и её подзона,
+--    добавленные вместе, остаются обе); прерванный квестом лор дочитывается после квестов.
 -- Конец звука определяем по длительности из пакета: API не даёт позицию проигрывания,
 -- а пауза/продолжение начинают файл заново (перемотки в WoW нет).
 local Queue = {
@@ -48,8 +49,10 @@ function Queue:Add(item)
     local position
     if IsZone(item) then
         for i = #self.items, 2, -1 do
-            if IsZone(self.items[i]) then
-                self:Remove(self.items[i])
+            local queued = self.items[i]
+            if IsZone(queued) and (not item.batch or queued.batch ~= item.batch)
+                and (not queued.zoneLevel or item.zoneLevel) then
+                self:Remove(queued)
             end
         end
         position = #self.items + 1
@@ -132,6 +135,9 @@ function Queue:Start(item, delay)
     item.handle = handle
     item.startedAt = GetTime()
     Util.Trace("start", item.sound.uid)
+    if item.onStart then
+        item.onStart(item)
+    end
     ns.Duck:On() -- приглушить голоса NPC, пока звучит озвучка
     self.last = item
     local duration = item.sound.duration or 10

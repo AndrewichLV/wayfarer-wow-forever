@@ -210,6 +210,21 @@ function Packs:FindPlaceByName(name)
     end
 end
 
+--- Все записи подзоны с этим названием на всех картах — для поиска двойников лора (Zones:Twins).
+---@return table list of { mapID, sound }
+function Packs:SubzoneEverywhere(name)
+    local out = {}
+    for _, pack in ipairs(self:Active()) do
+        for mapID, zone in pairs(pack.z) do
+            local sub = zone.s and zone.s[name]
+            if sub then
+                out[#out + 1] = { mapID = mapID, sound = ZoneSound(pack, sub) }
+            end
+        end
+    end
+    return out
+end
+
 --- Квестодатель из данных пакетов (когда квест пришёл от игрока или из предмета).
 function Packs:QuestGiver(questID)
     for _, pack in ipairs(self.list) do
