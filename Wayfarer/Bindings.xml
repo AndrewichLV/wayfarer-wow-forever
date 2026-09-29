@@ -1,7 +1,9 @@
 <Bindings>
-	<Binding name="WAYFARER_PAUSE" header="WAYFARER" category="ADDONS">Wayfarer.Queue:TogglePause()</Binding>
-	<Binding name="WAYFARER_SKIP" category="ADDONS">Wayfarer.Queue:Skip()</Binding>
-	<Binding name="WAYFARER_STOP" category="ADDONS">Wayfarer.Queue:Clear()</Binding>
-	<Binding name="WAYFARER_REPLAY" category="ADDONS">Wayfarer.Queue:Replay()</Binding>
-	<Binding name="WAYFARER_REPORT" category="ADDONS">Wayfarer.Report:Open()</Binding>
+	<!-- Свой раздел в «Назначении клавиш»: category — имя глобальной строки (BINDING_HEADER_WAYFARER в Core.lua).
+	     С category="ADDONS" и header клавиши попадали в общие «Модификации» под пустым заголовком. -->
+	<Binding name="WAYFARER_PAUSE" category="BINDING_HEADER_WAYFARER">Wayfarer.Queue:TogglePause()</Binding>
+	<Binding name="WAYFARER_SKIP" category="BINDING_HEADER_WAYFARER">Wayfarer.Queue:Skip()</Binding>
+	<Binding name="WAYFARER_STOP" category="BINDING_HEADER_WAYFARER">Wayfarer.Queue:Clear()</Binding>
+	<Binding name="WAYFARER_REPLAY" category="BINDING_HEADER_WAYFARER">Wayfarer.Queue:Replay()</Binding>
+	<Binding name="WAYFARER_REPORT" category="BINDING_HEADER_WAYFARER">Wayfarer.Report:Open()</Binding>
 </Bindings>

@@ -15,6 +15,7 @@ local EVENTS = {
     "GOSSIP_SHOW",
     "GOSSIP_CLOSED",
     "PLAYER_LOGIN",
+    "PLAYER_LOGOUT",
 }
 
 -- Элементы очереди, запущенные текущим окном квеста/разговора (для «молчать после закрытия»).
@@ -26,6 +27,12 @@ local function Portrait(target, speakerID)
         p.unit = target.unit
         p.display = target.display
         p.creature = target.id
+        if not p.display then
+            -- Модель не прочиталась (ещё грузится) — displayID из модуля озвучки: портрет по нему
+            -- получится, даже когда NPC уже далеко (реплика ждала в очереди).
+            local info = Packs:NpcInfo(target.id)
+            p.display = info and info.d
+        end
     end
     if speakerID and not p.creature then
         local info = Packs:NpcInfo(speakerID)
@@ -77,6 +84,7 @@ function Core:PlayQuest(event, questID, title, text, target)
     }
     if Queue:Add(item) then
         openQuestItem = item
+        UI:Snapshot(item)
     end
 end
 
@@ -111,6 +119,7 @@ function Core:PlayGossip(target, text)
     if Queue:Add(item) then
         ns.charDB.seen[seenKey] = true
         openGossipItem = item
+        UI:Snapshot(item)
     end
 end
 
@@ -196,6 +205,11 @@ function Core:PLAYER_LOGIN()
     end
 end
 
+-- Выход из игры или /reload посреди реплики: вернуть громкость «Диалогов» до записи настроек клиента.
+function Core:PLAYER_LOGOUT()
+    ns.Duck:Off()
+end
+
 -- При отказе от квеста убираем его из очереди.
 local function HookAbandon()
     if C_QuestLog and C_QuestLog.AbandonQuest and C_QuestLog.GetAbandonQuest then
@@ -226,6 +240,15 @@ function Core:ADDON_LOADED(name)
     if not validChannel then
         ns.db.channel = ns.DEFAULTS.channel
     end
+    local validModel = false
+    for _, m in ipairs(ns.VOICE_MODELS) do
+        validModel = validModel or m[1] == ns.db.voiceModel
+    end
+    if not validModel then
+        ns.db.voiceModel = ns.DEFAULTS.voiceModel
+    end
+    ns.Duck:RestoreAfterCrash()
+    ns.Options:Validate(ns.db)
     if type(ns.db.startDelay) ~= "number" or ns.db.startDelay < 0 or ns.db.startDelay > 3 then
         ns.db.startDelay = ns.DEFAULTS.startDelay
     end
@@ -244,6 +267,9 @@ end
 
 Core:SetScript("OnEvent", function(self, event, ...)
     local handler = self[event]
+    if handler and event ~= "ADDON_LOADED" then
+        Util.Trace("ev", event)
+    end
     if handler then
         -- Ошибка в одном событии не должна ломать остальные; показываем её штатным обработчиком.
         local ok, err = pcall(handler, self, ...)
@@ -264,6 +290,7 @@ local function PrintHelp()
     print("  /wf replay — повторить последнюю")
     print("  /wf report [комментарий] — сообщить о проблеме с текущей или последней репликой")
     print("  /wf reports — список репортов, чтобы скопировать в Discord (/wf reports clear — очистить)")
+    print("  /wf v4, /wf v3 — версия голосов: новые (где есть) или прежние")
     print("  /wf quest <id> [a|p|c] — прослушать квест из пакета")
     print("  /wf packs — установленные пакеты")
     print("  /wf stats — сколько текстов собрано")
@@ -272,6 +299,7 @@ local function PrintHelp()
     print("  /wf zone — прочитать лор места, где стоишь")
     print("  /wf reset seen — снова озвучивать уже слышанные реплики")
     print("  /wf reset zones — снова читать лор уже посещённых мест")
+    print("  /wf reset frame — вернуть окно плеера на место")
     print("  /wf options — настройки")
 end
 
@@ -285,6 +313,35 @@ function commands.options() ns.Options:Open() end
 function commands.replay()
     if not Queue:Replay() then
         Util.Print("ещё ничего не звучало.")
+    end
+end
+
+local function SetVoiceModel(model)
+    ns.db.voiceModel = model
+    if Settings and Settings.SetValue then
+        pcall(Settings.SetValue, "WAYFARER_voiceModel", model) -- чтобы панель настроек показала то же
+    end
+    local has = false
+    for _, pack in ipairs(Packs.list) do
+        has = has or pack.model == model
+    end
+    if not has then
+        Util.Print("голоса: %s, но модуль с ними не установлен — звучат голоса из установленных модулей.", model)
+    elseif model == "v3" then
+        Util.Print("голоса: v3 (прежние); где их нет — v4.")
+    else
+        Util.Print("голоса: %s; где их нет — прежние.", model)
+    end
+end
+
+function commands.v3() SetVoiceModel("v3") end
+function commands.v4() SetVoiceModel("v4") end
+
+function commands.log()
+    local trace = Wayfarer_Collected and Wayfarer_Collected.trace or {}
+    Util.Print("последние события очереди (время, событие, реплика | подзона):")
+    for i = math.max(1, #trace - 14), #trace do
+        print("  " .. trace[i])
     end
 end
 
@@ -334,7 +391,8 @@ function commands.packs()
         for _ in pairs(pack.q) do
             quests = quests + 1
         end
-        Util.Print("%s (версия %s, приоритет %d): квестов %d", pack.name, tostring(pack.version or "?"), pack.priority, quests)
+        Util.Print("%s (голоса %s, версия %s, приоритет %d): квестов %d", pack.name, pack.model,
+            tostring(pack.version or "?"), pack.priority, quests)
     end
 end
 
@@ -380,8 +438,13 @@ function commands.reset(args)
     elseif args == "zones" then
         ns.Zones:Forget()
         Util.Print("лор мест снова будет читаться при входе.")
+    elseif args == "frame" then
+        ns.db.framePos = false
+        ns.db.frameScale = ns.DEFAULTS.frameScale
+        UI:ApplySettings()
+        Util.Print("окно плеера возвращено на место.")
     else
-        Util.Print("использование: /wf reset seen | zones")
+        Util.Print("использование: /wf reset seen | zones | frame")
     end
 end
 

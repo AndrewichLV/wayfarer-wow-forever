@@ -148,6 +148,7 @@ function Zones:Init()
     end
     self:SetScript("OnEvent", function(frame, event, ...)
         local handler = frame[event]
+        ns.Util.Trace("ev", event)
         if handler then
             local ok, err = pcall(handler, frame, ...)
             if not ok then

@@ -32,6 +32,7 @@ function ns.RegisterPack(pack)
 
     pack.root = "Interface\\AddOns\\" .. pack.name .. "\\"
     pack.priority = pack.priority or 0
+    pack.model = pack.model or "v3" -- модель голосов: v3 — основа, остальные — по настройке voiceModel
     pack.ext = pack.ext or "ogg"
     pack.q = pack.q or {}     -- [questID] = { a = entry, p = entry, c = entry }
     pack.g = pack.g or {}     -- [npcID] = { entry, ... } реплики существ
@@ -54,6 +55,20 @@ end
 
 function Packs:Count()
     return #self.list
+end
+
+--- Пакеты для поиска звука: сначала выбранной в настройках версии голосов, потом остальные — где
+--- реплики нужной версии нет (или её модуль не установлен), звучит другая, а не тишина.
+function Packs:Active()
+    local wanted = ns.db and ns.db.voiceModel or "v4"
+    local active, rest = {}, {}
+    for _, pack in ipairs(self.list) do
+        table.insert(pack.model == wanted and active or rest, pack)
+    end
+    for _, pack in ipairs(rest) do
+        table.insert(active, pack)
+    end
+    return active
 end
 
 -- Превращает запись пакета в описание звука с учётом пола игрока.
@@ -85,7 +100,7 @@ end
 ---@param event string ns.Event.QuestAccept | QuestProgress | QuestComplete
 ---@param text string|nil текст из окна квеста — для проверки, что озвучка не устарела
 function Packs:FindQuest(questID, event, text)
-    for _, pack in ipairs(self.list) do
+    for _, pack in ipairs(self:Active()) do
         local quest = pack.q[questID]
         local entry = quest and quest[event]
         if entry then
@@ -111,7 +126,7 @@ function Packs:FindGossip(target, text)
     end
 
     local best, bestScore, bestPack = nil, 0, nil
-    for _, pack in ipairs(self.list) do
+    for _, pack in ipairs(self:Active()) do
         local list
         if target.id then
             list = (target.kind == "O" and pack.o or pack.g)[target.id]
@@ -158,7 +173,7 @@ function Packs:FindZone(mapID, subzone)
             return nil
         end
         local zoneSound, subSound, found
-        for _, pack in ipairs(self.list) do
+        for _, pack in ipairs(self:Active()) do
             local zone = pack.z[mapID]
             if zone then
                 found = true
@@ -185,7 +200,7 @@ function Packs:FindPlaceByName(name)
     if not name or name == "" then
         return nil
     end
-    for _, pack in ipairs(self.list) do
+    for _, pack in ipairs(self:Active()) do
         for mapID, zone in pairs(pack.z) do
             local sub = zone.s and zone.s[name]
             if sub then

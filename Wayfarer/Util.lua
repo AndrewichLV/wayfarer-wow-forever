@@ -55,6 +55,22 @@ function Util.Debug(msg, ...)
 end
 
 --- Копирует отсутствующие ключи из defaults в tbl (неглубоко для не-таблиц, рекурсивно для таблиц).
+--- Журнал очереди для диагностики (/wf log): последние события с временем и местом.
+--- Хранится в Wayfarer_Collected.trace, чтобы пережить /reload и попасть в SavedVariables.
+local TRACE_MAX = 40
+function Util.Trace(event, detail)
+    if not Wayfarer_Collected then
+        return
+    end
+    local trace = Wayfarer_Collected.trace or {}
+    Wayfarer_Collected.trace = trace
+    local sub = GetSubZoneText and GetSubZoneText() or ""
+    table.insert(trace, string.format("%.1f %s %s | %s", GetTime(), event, tostring(detail or ""), sub))
+    while #trace > TRACE_MAX do
+        table.remove(trace, 1)
+    end
+end
+
 function Util.ApplyDefaults(tbl, defaults)
     for k, v in pairs(defaults) do
         if type(v) == "table" then

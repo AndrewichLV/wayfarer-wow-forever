@@ -82,6 +82,7 @@ function Queue:Add(item)
     end
 
     table.insert(self.items, position, item)
+    Util.Trace("add", (item.sound.uid or "?") .. " @" .. position)
     if position == 1 and not self.paused then
         self:Start(item, item.delay)
     end
@@ -90,6 +91,11 @@ function Queue:Add(item)
 end
 
 function Queue:Start(item, delay)
+    if item.handle and item.startedAt and GetTime() - item.startedAt < (item.sound.duration or 0) then
+        -- Реплика уже звучит: повторный запуск сыграл бы файл с начала поверх текущего.
+        Util.Trace("start-skip", item.sound.uid)
+        return
+    end
     self:StopTimers()
     if delay and delay > 0 then
         item.waiting = true
@@ -125,6 +131,8 @@ function Queue:Start(item, delay)
 
     item.handle = handle
     item.startedAt = GetTime()
+    Util.Trace("start", item.sound.uid)
+    ns.Duck:On() -- приглушить голоса NPC, пока звучит озвучка
     self.last = item
     local duration = item.sound.duration or 10
     self.ticker = C_Timer.NewTicker(TICK, function()
@@ -160,13 +168,23 @@ local function StopHandle(item)
     end
 end
 
+--- Очередь замолчала (пусто или пауза) — вернуть громкость голосов NPC. Между репликами не
+--- возвращаем, чтобы приветствие NPC не пробивалось в паузе.
+function Queue:CheckIdle()
+    if not self.items[1] or self.paused then
+        ns.Duck:Off()
+    end
+end
+
 --- Элемент доиграл (или его пропустили): убираем и запускаем следующий.
 function Queue:Finish(item)
     local wasCurrent = self.items[1] == item
+    Util.Trace("finish", (item.sound.uid or "?") .. (wasCurrent and "" or " (не текущая)"))
     self:Remove(item)
     if wasCurrent and not self.paused and self.items[1] then
         self:Start(self.items[1], GAP_BETWEEN_ITEMS)
     end
+    self:CheckIdle()
 end
 
 function Queue:Remove(item)
@@ -208,12 +226,14 @@ function Queue:Skip()
 end
 
 function Queue:Clear()
+    Util.Trace("clear", #self.items)
     self:StopTimers()
     local current = self.items[1]
     if current then
         StopHandle(current)
     end
     wipe(self.items)
+    self:CheckIdle()
     ns.UI:Refresh()
 end
 
@@ -222,6 +242,7 @@ function Queue:SetPaused(paused)
         return
     end
     self.paused = paused
+    Util.Trace(paused and "pause" or "resume")
     local current = self.items[1]
     if paused then
         self:StopTimers()
@@ -232,6 +253,7 @@ function Queue:SetPaused(paused)
     elseif current then
         self:Start(current)
     end
+    self:CheckIdle()
     ns.UI:Refresh()
 end
 
