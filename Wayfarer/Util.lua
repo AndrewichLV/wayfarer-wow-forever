@@ -57,7 +57,7 @@ end
 --- Копирует отсутствующие ключи из defaults в tbl (неглубоко для не-таблиц, рекурсивно для таблиц).
 --- Журнал очереди для диагностики (/wf log): последние события с временем и местом.
 --- Хранится в Wayfarer_Collected.trace, чтобы пережить /reload и попасть в SavedVariables.
-local TRACE_MAX = 40
+local TRACE_MAX = 150 -- повтор реплики при выходе из здания (2026-10-02) — нужен запас до и после
 function Util.Trace(event, detail)
     if not Wayfarer_Collected then
         return
@@ -65,7 +65,8 @@ function Util.Trace(event, detail)
     local trace = Wayfarer_Collected.trace or {}
     Wayfarer_Collected.trace = trace
     local sub = GetSubZoneText and GetSubZoneText() or ""
-    table.insert(trace, string.format("%.1f %s %s | %s", GetTime(), event, tostring(detail or ""), sub))
+    local inside = IsIndoors and Util.Try(IsIndoors) and " (в помещении)" or ""
+    table.insert(trace, string.format("%.1f %s %s | %s%s", GetTime(), event, tostring(detail or ""), sub, inside))
     while #trace > TRACE_MAX do
         table.remove(trace, 1)
     end

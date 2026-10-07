@@ -100,9 +100,9 @@ function Zones:Twins(sound, mapID, subzone)
     return places
 end
 
---- opts: places — ключи места и его двойников; batch — метка лора, добавленного вместе (зона и её
---- подзона не вытесняют друг друга); zoneLevel — лор зоны. Место считается прочитанным, когда лор
---- действительно зазвучал: вытесненный из очереди новым местом прозвучит при следующем посещении.
+--- opts: places — ключи места и его двойников; batch — метка лора, добавленного вместе; zoneLevel — лор
+--- зоны (для журнала; очередь с 2026-09-30 лор не вытесняет — звучат все места по порядку). Место
+--- считается прочитанным, когда лор действительно зазвучал: снятый «Стопом» прозвучит при следующем посещении.
 function Zones:Play(sound, key, force, opts)
     opts = opts or {}
     local places = opts.places or { [key] = true }
@@ -139,7 +139,14 @@ end
 
 --- Прочитать лор места, где стоит игрок. withZone — и самой зоны (игрок вошёл в новую зону).
 function Zones:Check(withZone, force)
-    if not ns.db or not ns.db.enabled or (ns.db.zoneMode == "never" and not force) then
+    if not ns.db or not ns.db.enabled then
+        return
+    end
+    local zoneSound, subSound, zoneMap, subzone = self:Current()
+    if zoneMap and ns.Diary then
+        ns.Diary:Visit(zoneMap, subzone) -- атлас дневника: место открыто, даже если лор не звучит
+    end
+    if ns.db.zoneMode == "never" and not force then
         return
     end
     if not force then
@@ -151,7 +158,6 @@ function Zones:Check(withZone, force)
             return
         end
     end
-    local zoneSound, subSound, zoneMap, subzone = self:Current()
     if not zoneMap then
         return
     end

@@ -22,6 +22,7 @@ function Collector:Init()
     db.quests = db.quests or {}
     db.gossip = db.gossip or {}
     db.missing = db.missing or {}
+    db.books = db.books or {}   -- страницы книг и табличек без озвучки: [название|страница] = { title, page, text, ... }
     db.stale = db.stale or {}
 
     local version, build = GetBuildInfo()
@@ -150,6 +151,23 @@ function Collector:Gossip(kind, target, text)
     rec.n = (rec.n or 0) + 1
     rec.t = time()
     self:Npc(target)
+end
+
+--- Страница книги, письма или таблички без озвучки (Books.lua): текст — для озвучки в следующей версии.
+function Collector:Book(title, page, text)
+    if not self:Enabled() or type(text) ~= "string" or text == "" then
+        return
+    end
+    local key = (title or "?") .. "|" .. tostring(page or 1)
+    local rec = self.db.books[key] or {}
+    self.db.books[key] = rec
+    if rec.text ~= text then
+        rec.title, rec.page, rec.text = title, page, text
+        rec.char = self:CharKey()
+    end
+    rec.n = (rec.n or 0) + 1
+    rec.t = time()
+    rec.map = Util.Try(C_Map.GetBestMapForUnit, "player")
 end
 
 --- Встретили текст, для которого нет озвучки: список приоритетов для генерации.

@@ -42,6 +42,49 @@ local function Portrait(target, speakerID)
     return p
 end
 
+-- Приветствие собеседника («Приветствую!», «Чем могу помочь?»): игра играет его, когда открывается разговор.
+-- Первую реплику разговора откладываем до конца приветствия, чтобы голоса не накладывались (настройка waitGreeting,
+-- просьба пользователя 2026-10-04, как в CatQuest). Длина — по облику NPC (GreetData.lua: самая длинная фраза его
+-- набора NPCSounds), не знаем — GREET_DEFAULT. Окна квеста и разговора одного NPC подряд — один разговор.
+local GREET_GAP = 4       -- сек без окон разговора: следующее окно — новый разговор, NPC здоровается снова
+local GREET_MAX = 4       -- редкие длинные приветствия (до 9 с) не держат озвучку дольше
+local GREET_DEFAULT = 1.5
+local GREET_TAIL = 0.25
+local talk = { at = 0, last = -math.huge, key = nil, greet = 0 }
+
+local function GreetLength(target)
+    if not target or target.kind ~= "C" then
+        return 0 -- предмет, объект, доска объявлений: не здороваются
+    end
+    local display = target.display
+    if not display then
+        local info = Packs:NpcInfo(target.id)
+        display = info and info.d
+    end
+    local sound = display and ns.SoundByDisplay and ns.SoundByDisplay[display]
+    local seconds = sound and ns.GreetBySound and ns.GreetBySound[sound]
+    return math.min(seconds or GREET_DEFAULT, GREET_MAX)
+end
+
+--- Открылось окно квеста или разговора: если это новый разговор, NPC сейчас здоровается.
+function Core:NoteTalk(target)
+    local now = GetTime()
+    local key = target and target.key
+    if now - talk.last > GREET_GAP or key ~= talk.key then
+        talk.at, talk.key, talk.greet = now, key, GreetLength(target)
+    end
+    talk.last = now
+end
+
+--- Пауза перед репликой: «Пауза перед чтением» или до конца приветствия собеседника, что дольше.
+function Core:StartDelay()
+    local delay = ns.db.startDelay or 0
+    if ns.db.waitGreeting ~= false and talk.greet > 0 then
+        delay = math.max(delay, talk.at + talk.greet + GREET_TAIL - GetTime())
+    end
+    return delay
+end
+
 --- Имя говорящего: собеседник, либо квестодатель из пакета (общий квест, квест из предмета).
 local function SpeakerName(target, speakerID)
     if target and target.name and target.kind ~= "P" then
@@ -77,10 +120,11 @@ function Core:PlayQuest(event, questID, title, text, target)
         event = event,
         questID = questID,
         title = title,
+        text = text, -- текст окна квеста: его показывает плеер («говорящая голова»)
         name = SpeakerName(target, speakerID),
         target = target,
         portrait = Portrait(target, speakerID),
-        delay = ns.db.startDelay,
+        delay = self:StartDelay(),
     }
     if Queue:Add(item) then
         openQuestItem = item
@@ -111,10 +155,11 @@ function Core:PlayGossip(target, text)
     local item = {
         sound = sound,
         event = Event.Gossip,
+        text = text,
         name = SpeakerName(target, sound.speaker),
         target = target,
         portrait = Portrait(target, sound.speaker),
-        delay = ns.db.startDelay,
+        delay = self:StartDelay(),
     }
     if Queue:Add(item) then
         ns.charDB.seen[seenKey] = true
@@ -132,6 +177,7 @@ function Core:QUEST_DETAIL()
     end
     local title, text = GetTitleText(), GetQuestText()
     local target = Identity.Current(true)
+    self:NoteTalk(target)
     Collector:Quest(Event.QuestAccept, questID, title, text, GetObjectiveText(), target)
     if ns.db.playAccept then
         self:PlayQuest(Event.QuestAccept, questID, title, text, target)
@@ -145,6 +191,7 @@ function Core:QUEST_PROGRESS()
     end
     local title, text = GetTitleText(), GetProgressText()
     local target = Identity.Current(true)
+    self:NoteTalk(target)
     Collector:Quest(Event.QuestProgress, questID, title, text, nil, target)
     if ns.db.playProgress then
         self:PlayQuest(Event.QuestProgress, questID, title, text, target)
@@ -158,6 +205,7 @@ function Core:QUEST_COMPLETE()
     end
     local title, text = GetTitleText(), GetRewardText()
     local target = Identity.Current(true)
+    self:NoteTalk(target)
     Collector:Quest(Event.QuestComplete, questID, title, text, nil, target)
     if ns.db.playComplete then
         self:PlayQuest(Event.QuestComplete, questID, title, text, target)
@@ -167,6 +215,7 @@ end
 function Core:QUEST_GREETING()
     local text = GetGreetingText()
     local target = Identity.Current(true)
+    self:NoteTalk(target)
     Collector:Gossip("greeting", target, text)
     self:PlayGossip(target, text)
 end
@@ -174,6 +223,7 @@ end
 function Core:GOSSIP_SHOW()
     local text = C_GossipInfo.GetText()
     local target = Identity.Current(false)
+    self:NoteTalk(target)
     Collector:Gossip("gossip", target, text)
     self:PlayGossip(target, text)
 end
@@ -198,8 +248,19 @@ function Core:PLAYER_LOGIN()
         Util.Print("включён старый аддон VoiceOverRU — озвучка будет звучать дважды. Удалите папки "
             .. "VoiceOverRU и VoiceOverRU_Data* из Interface\\AddOns (Wayfarer его полностью заменяет).")
     end
-    if Packs:Count() == 0 then
-        Util.Print("пакеты озвучки не найдены. Аддон собирает тексты квестов; озвучка появится после установки модуля Wayfarer_Voices.")
+    local missing = Packs:Missing(Util.Try(UnitFactionGroup, "player"))
+    if #missing > 0 then
+        local names, projects = {}, {}
+        for _, m in ipairs(missing) do
+            names[#names + 1] = string.format("«%s» (%s)", m.info.title, m.state)
+            projects[#projects + 1] = m.info.project
+        end
+        Util.Print("с версии 0.6.0 озвучка — отдельными паками, и не хватает: %s. В приложении CurseForge они ставятся "
+            .. "сами вместе с аддоном; если нет — найдите %s или возьмите архивы на GitHub. /wf packs — что установлено.",
+            table.concat(names, ", "), table.concat(projects, ", "))
+    elseif Packs:HasLegacyAndSplit() then
+        Util.Print("установлены и прежний модуль Wayfarer_Voices, и новые паки озвучки — папку Wayfarer_Voices "
+            .. "в Interface\\AddOns можно удалить.")
     else
         Util.Debug("загружено пакетов: %d", Packs:Count())
     end
@@ -229,7 +290,8 @@ function Core:ADDON_LOADED(name)
     self:UnregisterEvent("ADDON_LOADED")
 
     Wayfarer_DB = Util.ApplyDefaults(Wayfarer_DB or {}, ns.DEFAULTS)
-    Wayfarer_CharDB = Util.ApplyDefaults(Wayfarer_CharDB or {}, { seen = {}, zones = {} })
+    Wayfarer_CharDB = Util.ApplyDefaults(Wayfarer_CharDB or {},
+        { seen = {}, zones = {}, visits = {}, chronicle = {}, bestiary = {} }) -- три последних — дневник путника
     ns.db = Wayfarer_DB
     ns.charDB = Wayfarer_CharDB
     -- Испорченное значение канала (старые версии, ручная правка) — назад к рабочему по умолчанию.
@@ -248,6 +310,14 @@ function Core:ADDON_LOADED(name)
         ns.db.voiceModel = ns.DEFAULTS.voiceModel
     end
     ns.Duck:RestoreAfterCrash()
+    -- 0.6.0: плеер «говорящая голова» стал видом по умолчанию — переводим тех, у кого стоял прежний
+    -- вид по умолчанию (пергамент); выбранные вручную мрамор, классика и «без фона» не трогаем. Один раз.
+    if not ns.db.headStyle then
+        if ns.db.frameTheme == "parchment" then
+            ns.db.frameTheme = "head"
+        end
+        ns.db.headStyle = true
+    end
     ns.Options:Validate(ns.db)
     if type(ns.db.startDelay) ~= "number" or ns.db.startDelay < 0 or ns.db.startDelay > 3 then
         ns.db.startDelay = ns.DEFAULTS.startDelay
@@ -258,6 +328,9 @@ function Core:ADDON_LOADED(name)
     ns.Options:Init()
     ns.Zones:Init()
     ns.ZoneMap:Init()
+    if ns.Diary then -- дневника нет в выпусках для игроков (vru export: RELEASE_EXCLUDE)
+        ns.Diary:Init()
+    end
     HookAbandon()
 
     for _, event in ipairs(EVENTS) do
@@ -284,6 +357,9 @@ Core:RegisterEvent("ADDON_LOADED")
 
 local function PrintHelp()
     Util.Print("команды:")
+    if ns.Journal then
+        print("  /wf journal (/wf j) — дневник путника: атлас мест, бестиарий, летопись")
+    end
     print("  /wf stop — остановить и очистить очередь")
     print("  /wf skip — следующая озвучка")
     print("  /wf pause — пауза / продолжить")
@@ -295,11 +371,14 @@ local function PrintHelp()
     print("  /wf packs — установленные пакеты")
     print("  /wf stats — сколько текстов собрано")
     print("  /wf mine [скорость] — запросить у сервера тексты всех квестов (потом выйти из игры)")
+    print("  /wf mine gaps [скорость] — только квесты, которых ещё нет в озвучке (по 2 в секунду)")
     print("  /wf npc — что аддон знает о текущем собеседнике")
     print("  /wf zone — прочитать лор места, где стоишь")
     print("  /wf reset seen — снова озвучивать уже слышанные реплики")
     print("  /wf reset zones — снова читать лор уже посещённых мест")
+    print("  /wf move — показать окно плеера, чтобы перетащить его мышью (ещё раз — готово)")
     print("  /wf reset frame — вернуть окно плеера на место")
+    print("  /wf size 80 — размер окна плеера в процентах")
     print("  /wf options — настройки")
 end
 
@@ -309,6 +388,13 @@ function commands.stop() Queue:Clear() end
 function commands.skip() Queue:Skip() end
 function commands.pause() Queue:TogglePause() end
 function commands.options() ns.Options:Open() end
+function commands.journal()
+    if ns.Journal then
+        ns.Journal:Toggle()
+    end
+end
+commands.j = commands.journal
+commands["дневник"] = commands.journal
 
 function commands.replay()
     if not Queue:Replay() then
@@ -340,7 +426,7 @@ function commands.v4() SetVoiceModel("v4") end
 function commands.log()
     local trace = Wayfarer_Collected and Wayfarer_Collected.trace or {}
     Util.Print("последние события очереди (время, событие, реплика | подзона):")
-    for i = math.max(1, #trace - 14), #trace do
+    for i = math.max(1, #trace - 24), #trace do
         print("  " .. trace[i])
     end
 end
@@ -357,6 +443,43 @@ function commands.reports(args)
     end
 end
 
+--- Озвучка квеста в пакетах: описание (взятие), а если его нет — сдача или «прогресс». event — только это событие.
+---@return table|nil sound, string|nil event
+function Core:QuestVoice(questID, event)
+    for _, e in ipairs(event and { event } or { Event.QuestAccept, Event.QuestComplete, Event.QuestProgress }) do
+        local sound = Packs:FindQuest(questID, e)
+        if sound then
+            return sound, e
+        end
+    end
+end
+
+--- Прослушать квест заново (журнал квестов, /wf quest). Нажали на квест, который звучит сейчас, — остановить.
+---@param text string|nil текст описания из журнала (его показывает плеер «говорящая голова»)
+---@return boolean есть озвучка
+function Core:ReplayQuest(questID, event, title, text)
+    local sound, e = self:QuestVoice(questID, event)
+    if not sound then
+        return false
+    end
+    local current = Queue:Current()
+    if current and current.sound.path == sound.path then
+        Queue:Skip()
+        return true
+    end
+    local giver = sound.speaker or Packs:QuestGiver(questID)
+    Queue:Add({
+        sound = sound,
+        event = e,
+        questID = questID,
+        title = title or ("Квест " .. questID),
+        text = e == Event.QuestAccept and text or nil,
+        name = SpeakerName(nil, giver),
+        portrait = Portrait(nil, giver),
+    })
+    return true
+end
+
 function commands.quest(args)
     local id, event = args:match("^(%d+)%s*([apc]?)")
     id = tonumber(id)
@@ -365,23 +488,15 @@ function commands.quest(args)
         return
     end
     event = event ~= "" and event or Event.QuestAccept
-    local sound = Packs:FindQuest(id, event)
-    if not sound then
+    if not Core:ReplayQuest(id, event) then
         Util.Print("в пакетах нет озвучки для квеста %d (%s).", id, event)
-        return
     end
-    local giver = sound.speaker or Packs:QuestGiver(id)
-    Queue:Add({
-        sound = sound,
-        event = event,
-        questID = id,
-        title = "Квест " .. id,
-        name = SpeakerName(nil, giver),
-        portrait = Portrait(nil, giver),
-    })
 end
 
 function commands.packs()
+    for _, m in ipairs(Packs:Missing(Util.Try(UnitFactionGroup, "player"))) do
+        Util.Print("нет пака «%s» (%s) — CurseForge: %s", m.info.title, m.state, m.info.project)
+    end
     if Packs:Count() == 0 then
         Util.Print("пакеты не установлены.")
         return
@@ -417,8 +532,13 @@ end
 function commands.mine(args)
     if args == "stop" then
         ns.Miner:Stop()
+        return
+    end
+    local gaps, rate = args:match("^(gaps)%s*(%d*)$")
+    if gaps then
+        ns.Miner:Start(tonumber(rate), true)
     else
-        ns.Miner:Start(args)
+        ns.Miner:Start(tonumber(args))
     end
 end
 
@@ -429,6 +549,28 @@ function commands.zone()
         return
     end
     ns.Zones:Check(true, true)
+end
+
+--- Размер окна плеера в процентах: /wf size 80 (то же, что ползунок «Размер окна плеера»).
+function commands.size(args)
+    local pct = tonumber((args or ""):match("%d+"))
+    if not pct then
+        Util.Print("размер окна плеера: %d%%. Изменить: /wf size 80 (от 50 до 150).",
+            math.floor((ns.db.frameScale or 1) * 100 + 0.5))
+        return
+    end
+    ns.db.frameScale = math.max(0.5, math.min(1.5, pct / 100))
+    UI:ApplySettings()
+    Util.Print("размер окна плеера: %d%%.", math.floor(ns.db.frameScale * 100 + 0.5))
+end
+commands["размер"] = commands.size
+
+function commands.move()
+    if UI:ToggleMove() then
+        Util.Print("перетащите окно мышью — место запомнится. Готово — /wf move ещё раз.")
+    else
+        Util.Print("окно на месте.")
+    end
 end
 
 function commands.reset(args)
@@ -467,4 +609,5 @@ BINDING_NAME_WAYFARER_PAUSE = "Пауза / продолжить"
 BINDING_NAME_WAYFARER_SKIP = "Следующая озвучка"
 BINDING_NAME_WAYFARER_STOP = "Остановить и очистить очередь"
 BINDING_NAME_WAYFARER_REPLAY = "Повторить последнюю"
+BINDING_NAME_WAYFARER_JOURNAL = "Дневник путника"
 BINDING_NAME_WAYFARER_REPORT = "Сообщить о проблеме с репликой"

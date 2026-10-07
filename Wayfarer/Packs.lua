@@ -41,6 +41,7 @@ function ns.RegisterPack(pack)
     pack.qg = pack.qg or {}   -- [questID] = npcID квестодателя (для общих квестов и предметов)
     pack.npc = pack.npc or {} -- [npcID] = { n = имя, d = displayID } для портрета
     pack.z = pack.z or {}     -- [uiMapID] = { h, d, t, n, s = { [название подзоны] = { h, d, t, n } } }
+    pack.b = pack.b or {}     -- [название книги] = { { h = страница, p = номер, k, d, t }, ... } книги и таблички
 
     Packs.byName[pack.name] = pack
     table.insert(Packs.list, pack)
@@ -55,6 +56,58 @@ end
 
 function Packs:Count()
     return #self.list
+end
+
+-- С 0.6.0 озвучка раздаётся четырьмя паками (на CurseForge — отдельными проектами «Wayfarer Voices - …»):
+-- один архив больше 1 ГБ сайт не принимает. Прежний единый модуль Wayfarer_Voices содержит всё сразу.
+Packs.FULL = "Wayfarer_Voices"
+Packs.SPLIT = {
+    { name = "Wayfarer_Voices_Alliance", title = "Альянс", project = "Wayfarer Voices - Alliance", faction = "Alliance" },
+    { name = "Wayfarer_Voices_Horde", title = "Орда", project = "Wayfarer Voices - Horde", faction = "Horde" },
+    { name = "Wayfarer_Voices_Shared", title = "Общие квесты", project = "Wayfarer Voices - Shared Quests" },
+    { name = "Wayfarer_Voices_Narrator", title = "Рассказчик", project = "Wayfarer Voices - Narrator" },
+}
+
+--- Состояние пака по списку модификаций: нет в папке AddOns или выключен.
+local function AddOnState(name)
+    if not (C_AddOns and C_AddOns.GetAddOnInfo) then
+        return "не установлен"
+    end
+    local _, _, _, _, reason = C_AddOns.GetAddOnInfo(name)
+    if reason == "DISABLED" then
+        return "выключен в списке модификаций"
+    elseif reason and reason ~= "MISSING" then
+        return "не загрузился: " .. tostring(reason)
+    end
+    return "не установлен"
+end
+
+--- Каких паков не хватает игроку этой фракции: свой фракционный, общие квесты, рассказчик.
+--- Пак чужой фракции не нужен; с прежним единым модулем не нужен ни один.
+function Packs:Missing(faction)
+    local missing = {}
+    if self.byName[self.FULL] then
+        return missing
+    end
+    for _, info in ipairs(self.SPLIT) do
+        if not self.byName[info.name] and (not info.faction or info.faction == faction) then
+            missing[#missing + 1] = { info = info, state = AddOnState(info.name) }
+        end
+    end
+    return missing
+end
+
+--- Прежний единый модуль рядом с новыми паками: реплики продублированы (звучит одна, но папка лишняя).
+function Packs:HasLegacyAndSplit()
+    if not self.byName[self.FULL] then
+        return false
+    end
+    for _, info in ipairs(self.SPLIT) do
+        if self.byName[info.name] then
+            return true
+        end
+    end
+    return false
 end
 
 --- Пакеты для поиска звука: сначала выбранной в настройках версии голосов, потом остальные — где
@@ -151,6 +204,44 @@ function Packs:FindGossip(target, text)
     end
 end
 
+--- Страница книги, письма, таблички: по названию (предмет или объект) и тексту; номер страницы — подсказка
+--- при равной похожести. Не нашлось под этим названием (Forever переименовал предмет) — по всем книгам.
+---@param title string|nil ItemTextGetItem()
+---@param page number|nil ItemTextGetPage()
+---@param text string текст страницы без HTML (Books.PlainText)
+function Packs:FindBook(title, page, text)
+    local tokens = Text.Tokens(text)
+    if #tokens == 0 then
+        return nil
+    end
+    local best, bestScore, bestPack = nil, 0, nil
+    local function Consider(pack, entry)
+        local score = Text.Similarity(Text.KeyTokens(entry.k), tokens)
+        if score > bestScore or (score == bestScore and best and entry.p == page and best.p ~= page) then
+            best, bestScore, bestPack = entry, score, pack
+        end
+    end
+    for _, pack in ipairs(self:Active()) do
+        for _, entry in ipairs(title and pack.b[title] or {}) do
+            Consider(pack, entry)
+        end
+    end
+    if bestScore < GOSSIP_MIN_SCORE then
+        for _, pack in ipairs(self:Active()) do
+            for _, entries in pairs(pack.b) do
+                for _, entry in ipairs(entries) do
+                    Consider(pack, entry)
+                end
+            end
+        end
+    end
+    if best and bestScore >= GOSSIP_MIN_SCORE then
+        local sound = Resolve(bestPack, best, "b\\" .. best.h)
+        sound.score = bestScore
+        return sound
+    end
+end
+
 local function ZoneSound(pack, entry)
     local sound = Resolve(pack, entry, "z\\" .. entry.h)
     sound.name = entry.n
@@ -191,6 +282,11 @@ function Packs:FindZone(mapID, subzone)
         end
         mapID = info and info.parentMapID
     end
+end
+
+--- Звук записи лора (зоны или подзоны) — для дневника, который перебирает все места модуля.
+function Packs:ZoneEntrySound(pack, entry)
+    return entry and entry.h and ZoneSound(pack, entry) or nil
 end
 
 --- Лор места по его названию в клиенте — для мест без своей карты мира (Подземный поезд — отдельная

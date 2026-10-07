@@ -17,4 +17,5 @@ ns.Event = {
     QuestProgress = "p", -- QUEST_PROGRESS: «Ну как, принёс?»
     QuestComplete = "c", -- QUEST_COMPLETE: текст награды
     Gossip = "g",        -- GOSSIP_SHOW / QUEST_GREETING: реплика NPC
+    Book = "b",          -- ITEM_TEXT_READY: страница книги, письма, таблички (Books.lua)
 }

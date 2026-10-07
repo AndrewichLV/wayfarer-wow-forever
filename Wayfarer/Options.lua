@@ -15,14 +15,20 @@ ns.DEFAULTS = {
     zoneMode = "once",    -- лор мест: "once" (при первом посещении) | "always" | "never"
     zoneSubzones = true,  -- читать лор подзон, а не только зон
     stopOnClose = false,  -- замолкать при закрытии окна квеста/диалога
+    questButtons = true,  -- кнопки ▶ у квестов в списке заданий и в журнале на карте (QuestLog.lua)
+    playBooks = true,     -- книги, письма и таблички читает рассказчик (Books.lua)
+    zoneButton = true,    -- кнопка ▶ рассказчика у мини-карты: лор места, где стоит игрок (ZoneMap.lua)
     muteNpcVoice = true,  -- на время озвучки опускать громкость «Диалогов» (приветствия NPC), Duck.lua
+    playInBackground = true, -- на время озвучки звук игры не глохнет при Alt+Tab (CVar звука в фоне, Duck.lua)
     startDelay = 0.6,     -- пауза перед чтением, чтобы не перебивать «Приветствую!» NPC
+    waitGreeting = true,  -- начинать после приветствия NPC (длина — по облику, GreetData.lua; Core:StartDelay)
     -- Окно плеера (UI.lua)
     showFrame = true,
-    frameTheme = "parchment", -- parchment | marble | classic | clear (UI.THEMES)
+    frameTheme = "head",  -- head («говорящая голова», как в retail) | parchment | marble | classic | clear (UI.THEMES)
     nameFont = "fancy",   -- fancy — шрифт заголовков квестов (Morpheus), plain — обычный
     frameAlpha = 1.0,     -- прозрачность фона и рамки
     portraitMode = "icon", -- "icon" — 2D-портрет собеседника, "model" — говорящая 3D-голова, "none" — без портрета
+    headPortrait = "head", -- «говорящая голова»: "head" — крупно лицо, "bust" — по пояс
     showTitle = false,    -- название квеста (или «Рассказчик») под именем
     controlsMode = "always", -- кнопки управления: always | hover (при наведении) | hidden
     showTimer = true,
@@ -30,7 +36,7 @@ ns.DEFAULTS = {
     showQueue = true,     -- «ещё N» рядом с кнопками
     showReport = true,    -- кнопка «!»
     animations = true,    -- плавное появление окна и мерцание кольца, пока NPC говорит
-    subtitles = true,
+    subtitles = true,     -- текст реплики в окне «говорящей головы»
     frameScale = 1.0,
     lockFrame = false,
     framePos = false,
@@ -68,6 +74,11 @@ local PORTRAIT_MODES = {
     { "none", "Без портрета" },
 }
 
+local HEAD_PORTRAITS = {
+    { "head", "Голова — крупно" },
+    { "bust", "По пояс" },
+}
+
 local ZONE_MODES = {
     { "once", "При первом посещении" },
     { "always", "При каждом входе (не чаще раза в 10 минут)" },
@@ -75,6 +86,7 @@ local ZONE_MODES = {
 }
 
 local FRAME_THEMES = {
+    { "head", "Говорящая голова (как в retail)" },
     { "parchment", "Пергамент" },
     { "marble", "Тёмный мрамор" },
     { "classic", "Классика" },
@@ -95,7 +107,7 @@ local CONTROLS_MODES = {
 -- Проверка значений из SavedVariables: испорченное или старое — назад к умолчанию.
 Options.CHOICES = {
     frameTheme = FRAME_THEMES, nameFont = NAME_FONTS, controlsMode = CONTROLS_MODES,
-    portraitMode = PORTRAIT_MODES, gossipMode = GOSSIP_MODES, zoneMode = ZONE_MODES,
+    portraitMode = PORTRAIT_MODES, gossipMode = GOSSIP_MODES, zoneMode = ZONE_MODES, headPortrait = HEAD_PORTRAITS,
 }
 
 function Options:Validate(db)
@@ -110,6 +122,9 @@ function Options:Validate(db)
     end
     if type(db.frameAlpha) ~= "number" or db.frameAlpha < 0.2 or db.frameAlpha > 1 then
         db.frameAlpha = ns.DEFAULTS.frameAlpha
+    end
+    if type(db.frameScale) ~= "number" or db.frameScale < 0.5 or db.frameScale > 1.5 then
+        db.frameScale = ns.DEFAULTS.frameScale
     end
 end
 
@@ -178,28 +193,48 @@ function Options:Init()
     Checkbox("playAccept", "Читать описание квеста", "При открытии квеста у NPC.")
     Checkbox("playProgress", "Читать «прогресс»", "Когда приходишь к NPC с незавершённым квестом.")
     Checkbox("playComplete", "Читать текст награды", "При сдаче квеста.")
+    Checkbox("questButtons", "Кнопки ▶ у квестов",
+        "В списке заданий у края экрана и в журнале квестов на карте: прослушать квест ещё раз, не открывая окно NPC. Повторное нажатие — остановить.",
+        function() if ns.QuestLog then ns.QuestLog:Refresh() end end)
+    Checkbox("playBooks", "Читать книги и таблички",
+        "Письма, книги, таблички и надписи читает рассказчик, где есть озвучка. Перелистнули — звучит новая страница.")
     Dropdown("gossipMode", "Реплики NPC", GOSSIP_MODES, "Как часто озвучивать разговоры с NPC.")
     Dropdown("zoneMode", "Рассказчик мест", ZONE_MODES,
         "Лор зоны или подзоны, когда входишь в неё. Не перебивает квесты. /wf zone — прочитать ещё раз.")
     Checkbox("zoneSubzones", "Лор подзон", "Читать не только зоны (Элвиннский лес), но и подзоны (Рудник Горного Эха).")
+    Checkbox("zoneButton", "Кнопка рассказчика у мини-карты",
+        "Кнопка ▶ слева от названия места над мини-картой: рассказ о месте, где вы стоите, не открывая карту. Правый клик — о всей зоне. Повторное нажатие — остановить.",
+        function() if ns.ZoneMap then ns.ZoneMap:Refresh() end end)
     Checkbox("muteNpcVoice", "Приглушать голоса NPC во время озвучки",
         "Пока звучит озвучка, громкость «Диалогов» опускается до нуля: приветствие NPC («Чем могу помочь?») не накладывается на реплику. Потом громкость возвращается. Не действует, если сама озвучка идёт через канал «Диалоги».",
         function() if not ns.db.muteNpcVoice then ns.Duck:Off() end end)
+    Checkbox("playInBackground", "Не прерывать озвучку при сворачивании игры",
+        "Если в настройках звука игры выключен «Звук в фоновом режиме», при Alt+Tab игра обрывает звук, и реплика пропадала. Пока звучит озвучка, звук в фоне включён; потом прежняя настройка возвращается. Выключено — оборванная реплика встаёт на паузу, ▶ — прослушать заново.",
+        function() if not ns.db.playInBackground then ns.Duck:Background(false) end end)
     Checkbox("stopOnClose", "Молчать после закрытия окна",
         "Останавливать чтение, когда закрываешь окно квеста или разговора.")
+    Checkbox("waitGreeting", "Ждать приветствие NPC",
+        "Начинать чтение, когда NPC договорит приветствие («Приветствую!», «Чем могу помочь?»): длина приветствия известна по облику NPC. Ждём только в начале разговора и не дольше 4 секунд.")
     Slider("startDelay", "Пауза перед чтением, сек", 0, 3, 0.1,
-        "Даёт NPC начать своё приветствие.")
+        "Наименьшая пауза перед репликой. С «Ждать приветствие NPC» — пауза до конца приветствия, если оно дольше.")
 
     Header("Окно плеера")
     Checkbox("showFrame", "Показывать окно плеера", nil, RefreshUI)
     Dropdown("frameTheme", "Оформление", FRAME_THEMES,
-        "Пергамент — состаренная бумага и золотая рамка; мрамор — тёмный камень с золотом; классика — прежний вид; без фона — только портрет, имя и полоса поверх игры.",
+        "Говорящая голова — большое окно, как в retail: звёздное небо, портрет в золотой рамке и текст реплики, который едет за голосом. Компактные: пергамент — состаренная бумага и золотая рамка; мрамор — тёмный камень с золотом; классика — прежний вид; без фона — только портрет, имя и полоса поверх игры.",
         RefreshUI)
+    Slider("frameScale", "Размер окна плеера", 0.5, 1.5, 0.05,
+        "Меньше или больше — окно меняется сразу, пока двигаете ползунок. Из чата: /wf size 80 (в процентах).",
+        RefreshUI, function(value) return string.format("%d%%", math.floor(value * 100 + 0.5)) end)
     Dropdown("nameFont", "Шрифт имени", NAME_FONTS, "Сказочный — тот же, что у названий квестов.", RefreshUI)
+    Checkbox("subtitles", "Текст реплики", "В окне «Говорящая голова»: текст квеста или разговора, прокручивается за голосом.",
+        RefreshUI)
     Slider("frameAlpha", "Непрозрачность фона", 0.2, 1, 0.05, nil, RefreshUI,
         function(value) return string.format("%d%%", math.floor(value * 100 + 0.5)) end)
     Dropdown("portraitMode", "Портрет собеседника", PORTRAIT_MODES,
-        "Портрет — круглый снимок NPC в кольце (как в окне квеста); 3D — модель, которая «говорит».", RefreshUI)
+        "Портрет — круглый снимок NPC в кольце (как в окне квеста); 3D — модель, которая «говорит». В «говорящей голове» портрет всегда 3D (или его нет).", RefreshUI)
+    Dropdown("headPortrait", "Собеседник в «говорящей голове»", HEAD_PORTRAITS,
+        "Голова — лицо крупно, как в окне квеста. По пояс — видно и плечи, и одежду.", RefreshUI)
     Checkbox("showTitle", "Название квеста под именем", "У лора мест — «Рассказчик».", RefreshUI)
     Dropdown("controlsMode", "Кнопки управления", CONTROLS_MODES,
         "«Пауза», «Далее», «Стоп» и «!». При наведении — появляются, когда мышь над окном. Клавиши и /wf работают всегда.",
@@ -209,8 +244,7 @@ function Options:Init()
     Checkbox("showQueue", "Сколько реплик в очереди", "«ещё 2» рядом с кнопками.", RefreshUI)
     Checkbox("showReport", "Кнопка «!» (сообщить о проблеме)", "Без кнопки — /wf report.", RefreshUI)
     Checkbox("animations", "Анимации", "Плавное появление окна и мерцание кольца портрета, пока NPC говорит.", RefreshUI)
-    Checkbox("lockFrame", "Закрепить окно", "Запретить перетаскивание мышью. /wf reset frame — вернуть окно на место.")
-    Slider("frameScale", "Масштаб окна", 0.5, 1.5, 0.05, nil, RefreshUI)
+    Checkbox("lockFrame", "Закрепить окно", "Запретить перетаскивание мышью. Передвинуть окно, когда ничего не звучит, — /wf move; вернуть на место — /wf reset frame.")
 
     Header("Сбор текстов")
     Checkbox("collect", "Собирать тексты для озвучки",

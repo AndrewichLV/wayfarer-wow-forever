@@ -8,6 +8,7 @@ local Miner = {}
 ns.Miner = Miner
 
 local DEFAULT_RATE = 8 -- запросов в секунду
+local GAPS_RATE = 2
 local MAX_RATE = 20
 local REPORT_EVERY = 500
 local ANSWER_WAIT = 10 -- сколько ждать последних ответов, сек
@@ -21,15 +22,21 @@ function Miner:IsRunning()
     return self.run ~= nil
 end
 
-function Miner:Start(rateArg)
+--- gaps — только квесты, которых нет в текстах озвучки (QuestGaps.lua): медленнее по умолчанию —
+--- на 8 запросов в секунду сервер отвечал «нет данных» на две трети квестов.
+function Miner:Start(rateArg, gaps)
     if self.run then
         Util.Print("сбор уже идёт. /wf mine stop — остановить.")
         return
     end
-    local ids = ns.QUEST_IDS
+    local ids = gaps and ns.QUEST_GAPS or ns.QUEST_IDS
     if not ids or #ids == 0 then
-        Util.Print("нет списка квестов (QuestIDs.lua). Запустите в пайплайне vru db2 и перезапустите игру.")
+        Util.Print("нет списка квестов (%s). Обновите аддон и перезапустите игру.",
+            gaps and "QuestGaps.lua" or "QuestIDs.lua")
         return
+    end
+    if gaps and not rateArg then
+        rateArg = GAPS_RATE
     end
     if not (C_QuestLog and C_QuestLog.RequestLoadQuestByID) then
         Util.Print("клиент не поддерживает запрос данных квестов.")
