@@ -8,7 +8,7 @@ Wayfarer читает вслух задания и рассказывает ис
 
 **Рекомендуем — [Wayfarer на CurseForge](https://www.curseforge.com/wow/addons/wayfarer-russian-voiceover).** Приложение CurseForge само поставит и будет обновлять аддон вместе с паками голосов.
 
-Здесь, на GitHub, — **только сам аддон, без голосов**: исходный код в папке [`Wayfarer/`](Wayfarer) и архив `Wayfarer-<версия>.zip` в [последнем релизе](https://github.com/AndrewichLV/wayfarer-wow-forever/releases/latest). Голоса — отдельные паки, они есть только на CurseForge:
+**Или вручную, отсюда:** в [последнем релизе](https://github.com/AndrewichLV/wayfarer-wow-forever/releases/latest) — архив аддона `Wayfarer-<версия>.zip` и (с 1.0.0) архивы всех паков: голоса и «Путевые истории». Исходный код аддона — в папке [`Wayfarer/`](Wayfarer). Паки — те же, что на CurseForge:
 
 | Пак | Что внутри |
 |---|---|
@@ -37,7 +37,7 @@ Wayfarer читает вслух задания и рассказывает ис
 
 1. Полностью закройте игру.
 2. Если стоял Wayfarer 0.3–0.5, удалите папку `Wayfarer_Voices` (голоса теперь в паках). Если стоял VoiceOver RU — папки `VoiceOverRU` и `VoiceOverRU_Data*`, иначе реплики будут звучать дважды.
-3. Скачайте `Wayfarer-<версия>.zip` из [релиза](https://github.com/AndrewichLV/wayfarer-wow-forever/releases/latest) и паки голосов с CurseForge (на странице пака — вкладка **Files**).
+3. Скачайте из [релиза](https://github.com/AndrewichLV/wayfarer-wow-forever/releases/latest) `Wayfarer-<версия>.zip` и паки: голоса своей фракции, общие квесты, рассказчик и, по желанию, «Путевые истории» (`Wayfarer_Radio`). Они же есть на CurseForge (на странице пака — вкладка **Files**).
 4. Распакуйте все папки в `World of Warcraft\_classic_beta_\Interface\AddOns`: должны получиться `Wayfarer`, `Wayfarer_Voices_*` и, если ставите «Путевые истории», `Wayfarer_Radio`.
 5. Запустите игру. Нужен именно перезапуск: после `/reload` новые звуковые файлы игра не увидит.
 
