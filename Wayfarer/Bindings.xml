@@ -6,4 +6,5 @@
 	<Binding name="WAYFARER_STOP" category="BINDING_HEADER_WAYFARER">Wayfarer.Queue:Clear()</Binding>
 	<Binding name="WAYFARER_REPLAY" category="BINDING_HEADER_WAYFARER">Wayfarer.Queue:Replay()</Binding>
 	<Binding name="WAYFARER_REPORT" category="BINDING_HEADER_WAYFARER">Wayfarer.Report:Open()</Binding>
+	<Binding name="WAYFARER_JOURNAL" category="BINDING_HEADER_WAYFARER">Wayfarer.Journal:Toggle()</Binding>
 </Bindings>

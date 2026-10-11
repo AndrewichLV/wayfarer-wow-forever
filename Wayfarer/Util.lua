@@ -28,6 +28,20 @@ function Util.Try(fn, ...)
     return Util.Plain(a), Util.Plain(b), Util.Plain(c), Util.Plain(d)
 end
 
+--- Кадр внутри чужого окна (карта, журнал квестов, список заданий, мини-карта). Клиент Forever в режиме геймпада
+--- перехватывает CreateFrame (SmartNavigation в Blizzard_GamepadSmartNavigation): если родитель нового кадра — внутри
+--- открытой панели, навигация перестраивает свои группы кнопок прямо в нашем вызове, её таблицы «пачкаются» аддоном,
+--- и при открытии карты клиент блокирует защищённое действие — «Модификация Wayfarer заблокирована…» (репорт игрока
+--- 2026-10-11). Поэтому кадр создаётся без родителя (перехват его не трогает) и только потом SetParent. Метку навигации
+--- smartNavigationIgnored не ставим: прочитав значение, записанное аддоном, навигация запачкалась бы так же.
+function Util.ChildFrame(frameType, parent, template, name)
+    local f = CreateFrame(frameType, name, nil, template)
+    if parent then
+        f:SetParent(parent)
+    end
+    return f
+end
+
 --- true, если личность юнита (имя, GUID, ID) сейчас скрыта клиентом.
 function Util.IsIdentitySecret(unit)
     if C_Secrets and C_Secrets.ShouldUnitIdentityBeSecret then

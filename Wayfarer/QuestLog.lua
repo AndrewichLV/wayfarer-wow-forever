@@ -55,7 +55,7 @@ end
 -- Строки списка ------------------------------------------------------------------------------------
 
 local function RowButton(row)
-    local b = CreateFrame("Button", nil, row)
+    local b = Util.ChildFrame("Button", row)
     b:SetSize(16, 16)
     b:SetNormalTexture(MEDIA .. "btn-play")
     b:SetHighlightTexture(MEDIA .. "btn-hl", "ADD")
@@ -120,7 +120,7 @@ function QuestLog:DecorateDetails(questID)
     end
     local b = rawget(self, "detailsButton")
     if not b then
-        b = CreateFrame("Button", nil, back, "UIPanelButtonTemplate")
+        b = Util.ChildFrame("Button", back, "UIPanelButtonTemplate")
         b:SetSize(124, 22)
         b:SetText("Прослушать")
         local label = b.GetFontString and b:GetFontString()
@@ -155,7 +155,7 @@ end
 local TRACKER_MODULES = { "QuestObjectiveTracker", "CampaignQuestObjectiveTracker" }
 
 local function TrackerButton(block)
-    local b = CreateFrame("Button", nil, block)
+    local b = Util.ChildFrame("Button", block)
     b:SetSize(16, 16)
     b:SetNormalTexture(MEDIA .. "btn-play")
     b:SetHighlightTexture(MEDIA .. "btn-hl", "ADD")

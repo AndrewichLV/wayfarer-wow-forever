@@ -98,6 +98,40 @@ local HEAD_K = 0.88
 -- Рассказчик: книга в своей рамке с камнями (картинка пользователя, 2026-10-02; tools/make_player_assets.py) —
 -- вместо золотой рамки портрета.
 local NARRATOR_ICON = MEDIA .. "narrator"
+-- Путевые истории (модуль Wayfarer_Radio): портрет — иконка самого выпуска (кобольд, мурлок… — листы radio-icons в
+-- Media/Journal, размеры и цвет — JournalArt), без неё — иконка рубрики, без них — микрофон Wayfarer. Фон — серая
+-- туманность bg-tint, подкрашенная приглушённым цветом иконки (tint, считает tools/make_journal_assets.py): просьба
+-- пользователя 2026-10-10 «иконка рассказа в плеере, фон под её цвет, чтобы глаз не резало».
+local RADIO_ICON = MEDIA .. "radio"
+local RADIO_SMALL = "Interface\\AddOns\\Wayfarer\\Media\\Icon"
+local JOURNAL_MEDIA = "Interface\\AddOns\\Wayfarer\\Media\\Journal\\"
+local RUBRIC_ICONS = {
+    chronicles = "chronicles", bestiary = "bestiary", faces = "faces", places = "mysteries", facts = "facts",
+    tales = "tales",
+}
+local RADIO_TINT = { 0.66, 0.56, 0.82 } -- без своей иконки — в тон микрофону
+
+--- Иконка выпуска путевых историй: имя текстуры из Media/Journal (icon-…) или nil.
+local function RadioArt(item)
+    local art = rawget(ns, "JournalArt")
+    local r = item.radio
+    if not (art and r) then
+        return nil
+    end
+    for _, key in ipairs({ r.icon or false, RUBRIC_ICONS[r.rubric or ""] or false }) do
+        if key and art["icon-" .. key] then
+            return "icon-" .. key
+        end
+    end
+end
+
+--- Цвет подкраски фона для выпуска.
+local function RadioTint(item)
+    local name = RadioArt(item)
+    local info = name and ns.JournalArt[name]
+    return info and info.tint or RADIO_TINT
+end
+UI.RadioTint = RadioTint
 
 -- Фон по расе говорящего (просьба пользователя 2026-10-02: «для каждой расы свой фон»). Раса — по голосу из пакета
 -- (слот вида «orc-male-…»); у элементалей — по стихии; кого нет в таблице — нейтральный.
@@ -112,14 +146,16 @@ local function Voice(item)
     return tostring(item.sound and item.sound.voice or "")
 end
 
---- Говорит рассказчик: лор места или текст голосом рассказчика (книги, записки, описания).
+--- Говорит рассказчик: лор места, путевые истории или текст голосом рассказчика (книги, записки, описания).
 local function IsNarrator(item)
-    return item.zone ~= nil or Voice(item):match("^narrator") ~= nil
+    return item.zone ~= nil or item.radio ~= nil or Voice(item):match("^narrator") ~= nil
 end
 UI.IsNarrator = IsNarrator
 
 local function Kit(item)
-    if item.zone then
+    if item.radio then
+        return "tint" -- путевые истории: серая туманность в цвет иконки выпуска (RadioTint)
+    elseif item.zone then
         return "narrator"
     end
     local voice = Voice(item)
@@ -458,7 +494,7 @@ function UI:Init()
         GameTooltip:Hide()
         UI:CheckHover()
     end)
-    -- Дневник путника: атлас мест, бестиарий, летопись (Journal.lua; в выпусках для игроков его нет — кнопки тоже).
+    -- Дневник путника: Азерот (места) и истории (Journal.lua; в выпусках для игроков его нет — кнопки тоже).
     local journal = ns.Journal and CreateFrame("Button", nil, controls)
     if journal then
         journal:SetSize(18, 18)
@@ -600,8 +636,10 @@ function UI:LayoutHead(t)
     local scroll = self.textScroll
     scroll:ClearAllPoints()
     scroll:SetPoint("TOPLEFT", left, -top)
-    scroll:SetPoint("BOTTOMRIGHT", controls and -32 or -12, 10)
     local width = HEAD_W - left - (controls and 32 or 12)
+    -- Высота — целое число строк: иначе внизу виднелась половина следующей строки (снимок пользователя 2026-10-10).
+    local line = TEXT_SIZE + TEXT_SPACING
+    scroll:SetSize(width, math.floor((HEAD_H - top - 10) / line) * line)
     self.textChild:SetWidth(width)
     self.text:SetWidth(width)
     scroll:SetShown(db.subtitles ~= false)
@@ -717,7 +755,10 @@ end
 
 -- Иконка вместо портрета: лор места — летопись, рассказчик и предметы — книга, NPC — значок расы по голосу.
 local function FallbackIcon(item)
-    if item.zone then
+    if item.radio then
+        local name = RadioArt(item)
+        return name and (JOURNAL_MEDIA .. name) or RADIO_SMALL
+    elseif item.zone then
         return LORE_ICON
     end
     local voice = Voice(item)
@@ -905,7 +946,8 @@ function UI:SetPortrait(item)
     end
     if narrator then
         model:Hide()
-        icon:SetTexture(NARRATOR_ICON)
+        local radio = item.radio and RadioArt(item)
+        icon:SetTexture(radio and (JOURNAL_MEDIA .. radio) or (item.radio and RADIO_ICON) or NARRATOR_ICON)
         icon:SetTexCoord(0, 1, 0, 1)
         icon:SetSize(HEAD_FRAME, HEAD_FRAME)
         icon:Show()
@@ -963,6 +1005,8 @@ end
 local function Subtitle(item)
     if item.zone then
         return "Рассказчик"
+    elseif item.radio then
+        return item.title or "Путевые истории" -- «Бестиарий путника, часть 1 из 2»
     end
     return item.title or ""
 end
@@ -1012,6 +1056,12 @@ function UI:ShowText(item, keepScroll)
         return
     end
     self.headBg:SetTexture(MEDIA .. "bg-" .. Kit(item))
+    local tint = item.radio and RadioTint(item)
+    if tint then
+        self.headBg:SetVertexColor(tint[1], tint[2], tint[3])
+    else
+        self.headBg:SetVertexColor(1, 1, 1)
+    end
     self.text:SetText(UI.ItemText(item))
     self.textMax = nil -- высота текста известна не сразу: считаем в Progress
     if not keepScroll then
@@ -1122,6 +1172,9 @@ end
 function UI:Refresh()
     if ns.ZoneMap then
         ns.ZoneMap:Refresh() -- «Послушать / Стоп» на карте мира следует за очередью
+    end
+    if ns.Journal and ns.Journal.OnQueue then
+        ns.Journal:OnQueue() -- вкладка «Истории» дневника: что звучит сейчас
     end
     local f = self.frame
     if not f then

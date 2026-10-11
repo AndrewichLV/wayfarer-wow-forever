@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: |cffd4af37Wayfarer|r
-## Notes: Путеводитель по Азероту: русская озвучка квестов голосами NPC и лор мест для WoW Forever. Озвучка — паки Wayfarer Voices: Альянс, Орда, общие квесты, рассказчик.
-## Version: 0.7.1
+## Notes: Путеводитель по Азероту: русская озвучка квестов голосами NPC, лор мест и дневник путника для WoW Forever. Озвучка — паки Wayfarer Voices: Альянс, Орда, общие квесты, рассказчик; радио и аудиокнига — пак «Путевые истории».
+## Version: 1.0.0
 ## Category: Audio & Video
 ## IconTexture: Interface\AddOns\Wayfarer\Media\Icon
 ## SavedVariables: Wayfarer_DB, Wayfarer_Collected
@@ -21,6 +21,9 @@ Zones.lua
 ZoneMap.lua
 QuestLog.lua
 Books.lua
+Diary.lua
+JournalArt.lua
+Journal.lua
 QuestIDs.lua
 QuestGaps.lua
 Miner.lua

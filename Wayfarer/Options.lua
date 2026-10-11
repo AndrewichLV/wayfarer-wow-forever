@@ -18,6 +18,8 @@ ns.DEFAULTS = {
     questButtons = true,  -- кнопки ▶ у квестов в списке заданий и в журнале на карте (QuestLog.lua)
     playBooks = true,     -- книги, письма и таблички читает рассказчик (Books.lua)
     zoneButton = true,    -- кнопка ▶ рассказчика у мини-карты: лор места, где стоит игрок (ZoneMap.lua)
+    ringButton = true,    -- кнопка Wayfarer (микрофон) на кольце мини-карты: меню управления (ZoneMap.lua, Ring)
+    ringAngle = 140,      -- где на кольце: угол в градусах от «трёх часов» против часовой стрелки
     muteNpcVoice = true,  -- на время озвучки опускать громкость «Диалогов» (приветствия NPC), Duck.lua
     playInBackground = true, -- на время озвучки звук игры не глохнет при Alt+Tab (CVar звука в фоне, Duck.lua)
     startDelay = 0.6,     -- пауза перед чтением, чтобы не перебивать «Приветствую!» NPC
@@ -126,6 +128,9 @@ function Options:Validate(db)
     if type(db.frameScale) ~= "number" or db.frameScale < 0.5 or db.frameScale > 1.5 then
         db.frameScale = ns.DEFAULTS.frameScale
     end
+    if type(db.ringAngle) ~= "number" then
+        db.ringAngle = ns.DEFAULTS.ringAngle
+    end
 end
 
 function Options:Init()
@@ -205,6 +210,9 @@ function Options:Init()
     Checkbox("zoneButton", "Кнопка рассказчика у мини-карты",
         "Кнопка ▶ слева от названия места над мини-картой: рассказ о месте, где вы стоите, не открывая карту. Правый клик — о всей зоне. Повторное нажатие — остановить.",
         function() if ns.ZoneMap then ns.ZoneMap:Refresh() end end)
+    Checkbox("ringButton", "Кнопка Wayfarer на краю мини-карты",
+        "Микрофон Wayfarer на кольце мини-карты: клик — меню (пауза, дальше, стоп, рассказ о месте, путевые истории, настройки). Кнопку можно перетащить по краю мини-карты.",
+        function() if ns.Ring then ns.Ring:Refresh() end end)
     Checkbox("muteNpcVoice", "Приглушать голоса NPC во время озвучки",
         "Пока звучит озвучка, громкость «Диалогов» опускается до нуля: приветствие NPC («Чем могу помочь?») не накладывается на реплику. Потом громкость возвращается. Не действует, если сама озвучка идёт через канал «Диалоги».",
         function() if not ns.db.muteNpcVoice then ns.Duck:Off() end end)

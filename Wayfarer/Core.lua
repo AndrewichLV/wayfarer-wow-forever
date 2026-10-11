@@ -291,7 +291,7 @@ function Core:ADDON_LOADED(name)
 
     Wayfarer_DB = Util.ApplyDefaults(Wayfarer_DB or {}, ns.DEFAULTS)
     Wayfarer_CharDB = Util.ApplyDefaults(Wayfarer_CharDB or {},
-        { seen = {}, zones = {}, visits = {}, chronicle = {}, bestiary = {} }) -- три последних — дневник путника
+        { seen = {}, zones = {}, visits = {} }) -- visits — открытые места дневника путника
     ns.db = Wayfarer_DB
     ns.charDB = Wayfarer_CharDB
     -- Испорченное значение канала (старые версии, ручная правка) — назад к рабочему по умолчанию.
@@ -358,7 +358,7 @@ Core:RegisterEvent("ADDON_LOADED")
 local function PrintHelp()
     Util.Print("команды:")
     if ns.Journal then
-        print("  /wf journal (/wf j) — дневник путника: атлас мест, бестиарий, летопись")
+        print("  /wf journal (/wf j) — дневник путника: атлас мест и путевые истории")
     end
     print("  /wf stop — остановить и очистить очередь")
     print("  /wf skip — следующая озвучка")

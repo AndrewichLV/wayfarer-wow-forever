@@ -7,7 +7,9 @@ local Util = ns.Util
 --  * квесты — первыми: звучащую реплику NPC квест прерывает, звучащий лор места — тоже;
 --  * реплика NPC (страница диалога) — после квестов и прежних реплик, раньше лора мест;
 --    звучащий лор прерывает (иначе ответ NPC ждал бы конца долгого рассказа);
---  * лор места (zone) — самый низкий приоритет, в конец; прерванный лор дочитывается с начала потом.
+--  * лор места (zone) — после реплик, в конец; прерванный лор дочитывается с начала потом;
+--  * путевые истории (radio, модуль Wayfarer_Radio) — ниже всех: их прерывает и квест, и реплика, и лор места,
+--    а прерванный сегмент звучит заново каждый раз (выпуск порезан на сегменты до полутора минут).
 -- Конец звука определяем по длительности из пакета: API не даёт позицию проигрывания,
 -- а пауза/продолжение начинают файл заново (перемотки в WoW нет).
 local Queue = {
@@ -24,12 +26,31 @@ local END_MARGIN = 0.15
 -- запуска (звук ещё мог не начаться), и не позже, чем за CUT_TAIL до конца (длительность в пакете округлена).
 local CUT_START, CUT_TAIL = 0.5, 1.0
 
-local function IsQuest(item)
-    return item.questID ~= nil
-end
+-- Лор места не прерывает сегмент путевых историй, которому осталось звучать меньше RADIO_TAIL секунд: дослушать
+-- быстрее, чем начинать сегмент заново, — лор звучит сразу за ним.
+local RADIO_TAIL = 20
 
-local function IsZone(item)
-    return item.zone ~= nil
+-- Ранг элемента: чем меньше, тем важнее. Более важный прерывает звучащий и встаёт перед менее важными.
+local RANK_QUEST, RANK_LINE, RANK_ZONE, RANK_RADIO = 1, 2, 3, 4
+
+local function Rank(item)
+    if item.questID ~= nil then
+        return RANK_QUEST
+    elseif item.radio ~= nil then
+        return RANK_RADIO
+    elseif item.zone ~= nil then
+        return RANK_ZONE
+    end
+    return RANK_LINE
+end
+Queue.Rank = Rank
+
+--- Сегмент путевых историй почти дозвучал — лор места подождёт его конца.
+local function Finishing(current, item)
+    if Rank(current) ~= RANK_RADIO or Rank(item) ~= RANK_ZONE or not (current.handle and current.startedAt) then
+        return false
+    end
+    return (current.sound.duration or 0) - (GetTime() - current.startedAt) <= RADIO_TAIL
 end
 
 function Queue:Current()
@@ -40,7 +61,7 @@ function Queue:Size()
     return #self.items
 end
 
----@param item table { sound, event, questID?, title?, name?, target?, speaker?, delay? }
+---@param item table { sound, event, questID?, zone?, radio?, title?, name?, target?, speaker?, delay? }
 ---@return boolean added
 function Queue:Add(item)
     for _, queued in ipairs(self.items) do
@@ -49,34 +70,16 @@ function Queue:Add(item)
         end
     end
 
-    local position
-    if IsZone(item) then
-        position = #self.items + 1
-    else
-        local current = self.items[1]
-        if current and (IsZone(current) or (IsQuest(item) and not IsQuest(current))) then
-            self:Interrupt(current)
-        end
-        -- Квесты и реплики NPC читаются раньше ждущего лора мест.
-        position = #self.items + 1
-        for i, queued in ipairs(self.items) do
-            if IsZone(queued) then
-                position = i
-                break
-            end
-        end
-        if IsQuest(item) then
-            -- Квест — сразу за квестами: ждущие реплики NPC пропускают его вперёд.
-            for i, queued in ipairs(self.items) do
-                if i >= position then
-                    break
-                end
-                if not IsQuest(queued) then
-                    position = i
-                    break
-                end
-            end
-        end
+    local rank = Rank(item)
+    local current = self.items[1]
+    local interrupt = current ~= nil and rank < Rank(current) and not Finishing(current, item)
+    if interrupt then
+        self:Interrupt(current)
+    end
+    -- За всеми, кто важнее или равен: квест — сразу за квестами, реплика — раньше ждущего лора, лор — раньше радио.
+    local position = self:PositionFor(rank)
+    if current and not interrupt then
+        position = math.max(position, 2) -- звучащий элемент остаётся первым
     end
 
     table.insert(self.items, position, item)
@@ -86,6 +89,16 @@ function Queue:Add(item)
     end
     ns.UI:Refresh()
     return true
+end
+
+--- Место в очереди для элемента ранга rank: перед первым менее важным.
+function Queue:PositionFor(rank)
+    for i, queued in ipairs(self.items) do
+        if Rank(queued) > rank then
+            return i
+        end
+    end
+    return #self.items + 1
 end
 
 function Queue:Start(item, delay)
@@ -133,9 +146,6 @@ function Queue:Start(item, delay)
     Util.Trace("start", item.sound.uid)
     if item.onStart then
         item.onStart(item)
-    end
-    if ns.Diary then
-        ns.Diary:Heard(item) -- летопись дневника: что звучало, чтобы переслушать
     end
     ns.Duck:On() -- приглушить голоса NPC, пока звучит озвучка
     self.last = item
@@ -266,14 +276,16 @@ function Queue:Remove(item)
     return false
 end
 
---- Прервать звучащий элемент ради более важного: реплика NPC снимается, лор места встаёт в конец
---- (перемотки нет — дочитаем с начала, но один раз).
+--- Прервать звучащий элемент ради более важного: реплика NPC снимается, лор места встаёт в очередь на своё место
+--- (перемотки нет — дочитаем с начала, но один раз), сегмент путевых историй — тоже, и каждый раз.
 function Queue:Interrupt(item)
+    Util.Trace("interrupt", item.sound.uid or "?")
     self:Remove(item)
-    if IsZone(item) and not item.resumed then
+    local rank = Rank(item)
+    if rank == RANK_RADIO or (rank == RANK_ZONE and not item.resumed) then
         item.resumed = true
-        item.handle, item.startedAt = nil, nil
-        table.insert(self.items, item)
+        item.handle, item.startedAt, item.waiting = nil, nil, nil
+        table.insert(self.items, self:PositionFor(rank), item)
     end
 end
 
